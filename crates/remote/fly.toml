@@ -1,0 +1,126 @@
+# Fly.io configuration for Vibe Kanban Remote Server
+# Deploy with: fly deploy --config fly.toml
+
+app = 'vibe-kanban'
+primary_region = 'sjc'  # Change to your preferred region
+
+[build]
+  dockerfile = "Dockerfile"
+  # Self-hosted mode (no billing features)
+  [build.args]
+    FEATURES = ""
+    # Optional: Set relay URL at build time, or override via secrets later
+    # VITE_RELAY_API_BASE_URL = "https://vibe-kanban-relay.fly.dev"
+
+[env]
+  # Logging
+  RUST_LOG = "info,remote=info"
+
+  # Server config
+  SERVER_LISTEN_ADDR = "0.0.0.0:8081"
+
+  # ElectricSQL connection (internal Fly.io networking)
+  # After deploying vibe-kanban-electric app, it will be available at:
+  ELECTRIC_URL = "http://vibe-kanban-electric.internal:3000"
+
+  # ElectricSQL manual table publishing
+  ELECTRIC_MANUAL_TABLE_PUBLISHING = "true"
+
+# HTTP service configuration
+[http_service]
+  internal_port = 8081
+  force_https = true
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 250
+    soft_limit = 200
+
+# Health checks
+[[services]]
+  protocol = "tcp"
+  internal_port = 8081
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type = "requests"
+    hard_limit = 250
+    soft_limit = 200
+
+  # TCP health check
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "5s"
+
+  # HTTP health check
+  [[services.http_checks]]
+    interval = "10s"
+    timeout = "2s"
+    grace_period = "10s"
+    method = "get"
+    path = "/v1/health"
+    protocol = "http"
+
+# VM resources
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 2
+
+# Secrets to configure via `fly secrets set`:
+#
+# Required:
+#   SERVER_DATABASE_URL              - PlanetScale Postgres connection string
+#   VIBEKANBAN_REMOTE_JWT_SECRET     - JWT signing secret (openssl rand -base64 48)
+#   ELECTRIC_ROLE_PASSWORD           - Password for electric_sync database role
+#   SERVER_PUBLIC_BASE_URL           - Public URL (e.g., https://vibe-kanban.fly.dev)
+#
+# OAuth (at least one required):
+#   GITHUB_OAUTH_CLIENT_ID           - GitHub OAuth app client ID
+#   GITHUB_OAUTH_CLIENT_SECRET       - GitHub OAuth app client secret
+#   GOOGLE_OAUTH_CLIENT_ID           - Google OAuth app client ID
+#   GOOGLE_OAUTH_CLIENT_SECRET       - Google OAuth app client secret
+#
+# Optional - Email notifications:
+#   LOOPS_EMAIL_API_KEY              - Loops email service API key
+#   LOOPS_INVITE_TEMPLATE_ID         - Template ID for invite emails
+#   LOOPS_REVIEW_READY_TEMPLATE_ID   - Template ID for review ready emails
+#   LOOPS_REVIEW_FAILED_TEMPLATE_ID  - Template ID for review failed emails
+#   DIGEST_ENABLED                   - Enable digest emails (true/false)
+#
+# Optional - Attachments (Azure Blob Storage):
+#   AZURE_STORAGE_ACCOUNT_NAME       - Azure storage account name
+#   AZURE_STORAGE_ACCOUNT_KEY        - Azure storage account key
+#   AZURE_STORAGE_CONTAINER_NAME     - Container name (e.g., issue-attachments)
+#
+# Optional - Review artifacts (Cloudflare R2):
+#   R2_ACCESS_KEY_ID                 - R2 access key ID
+#   R2_SECRET_ACCESS_KEY             - R2 secret access key
+#   R2_REVIEW_ENDPOINT               - R2 endpoint URL
+#   R2_REVIEW_BUCKET                 - R2 bucket name
+#   REVIEW_WORKER_BASE_URL           - Review worker URL
+#
+# Optional - GitHub App:
+#   GITHUB_APP_ID                    - GitHub App ID
+#   GITHUB_APP_PRIVATE_KEY           - GitHub App private key (PEM format)
+#   GITHUB_APP_WEBHOOK_SECRET        - GitHub App webhook secret
+#   GITHUB_APP_SLUG                  - GitHub App slug
+#
+# Optional - Billing (requires FEATURES build arg):
+#   STRIPE_SECRET_KEY                - Stripe API secret key
+#   STRIPE_TEAM_SEAT_PRICE_ID        - Stripe price ID for team seats
+#   STRIPE_WEBHOOK_SECRET            - Stripe webhook secret
+#   STRIPE_FREE_SEAT_LIMIT           - Number of free seats (default: 1)

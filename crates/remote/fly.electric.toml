@@ -1,0 +1,77 @@
+# Fly.io configuration for ElectricSQL Sync Engine
+# Deploy with: fly deploy --config fly.electric.toml --image electricsql/electric:1.4.13
+
+app = 'vibe-kanban-electric'
+primary_region = 'sjc'  # Must match primary app region
+
+# Use pre-built ElectricSQL image
+[build]
+  image = "electricsql/electric:1.4.13"
+
+[env]
+  # Electric ports
+  HTTP_PORT = "3000"
+  PG_PROXY_PORT = "65432"
+
+  # Publisher host (for logical replication)
+  LOGICAL_PUBLISHER_HOST = "vibe-kanban-electric"
+
+  # Auth mode - secure for production
+  AUTH_MODE = "secure"
+
+  # Manual table publishing (tables are electrified via migrations)
+  ELECTRIC_MANUAL_TABLE_PUBLISHING = "true"
+
+  # Disable usage reporting
+  ELECTRIC_USAGE_REPORTING = "false"
+
+  # Feature flags
+  ELECTRIC_FEATURE_FLAGS = "allow_subqueries,tagged_subqueries"
+
+# Internal HTTP service (not exposed to public internet)
+[http_service]
+  internal_port = 3000
+  force_https = false
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
+
+# No public services - only internal networking
+[[services]]
+  protocol = "tcp"
+  internal_port = 3000
+
+  # HTTP health check
+  [[services.http_checks]]
+    interval = "15s"
+    timeout = "3s"
+    grace_period = "10s"
+    method = "get"
+    path = "/v1/health"
+    protocol = "http"
+
+# VM resources (Electric is lightweight)
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Volume for persistent Electric state
+[mounts]
+  source = "electric_data"
+  destination = "/app/persistent"
+
+# Secrets to configure via `fly secrets set -a vibe-kanban-electric`:
+#
+# Required:
+#   DATABASE_URL           - PlanetScale Postgres connection string with electric_sync role
+#                           Format: postgresql://electric_sync:password@host:port/database?sslmode=require
+#   AUTH_SECRET            - Secret for Electric's secure auth mode (should match ELECTRIC_SECRET on main app if needed)
+#
+# Note: DATABASE_URL should use the electric_sync role with REPLICATION privileges
+# Create in PlanetScale after running migrations:
+#   CREATE ROLE electric_sync WITH LOGIN PASSWORD 'secure-password' REPLICATION;
+#   GRANT CONNECT ON DATABASE vibe_kanban TO electric_sync;
+#   GRANT SELECT ON ALL TABLES IN SCHEMA public TO electric_sync;
+#   GRANT USAGE ON SCHEMA public TO electric_sync;
