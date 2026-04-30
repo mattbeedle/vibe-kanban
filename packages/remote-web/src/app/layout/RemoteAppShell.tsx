@@ -58,9 +58,9 @@ export function RemoteAppShell({ children }: RemoteAppShellProps) {
   const { isSignedIn } = useAuth();
   const isWorkspaceContextRoute = location.pathname.includes("/workspaces");
   const isProjectRoute = /^\/projects\/[^/]+/.test(location.pathname);
-  const isExportRoute = location.pathname === "/export";
-  const showCloudShutdownBanner =
-    isExportRoute || (isSignedIn && isProjectRoute);
+  // Banner is BloopAI's hosted-shutdown announcement; not relevant in
+  // self-hosted deployments.
+  const showCloudShutdownBanner = false;
 
   useCommandBarShortcut(
     () => CommandBarDialog.show(),

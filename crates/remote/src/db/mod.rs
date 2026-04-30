@@ -104,12 +104,32 @@ pub(crate) async fn ensure_electric_role_password(
         return Ok(());
     }
 
-    // PostgreSQL doesn't support parameter binding for ALTER ROLE PASSWORD
-    // We need to escape the password properly and embed it directly in the SQL
+    // PostgreSQL doesn't support parameter binding for ALTER ROLE PASSWORD,
+    // so embed the (escaped) password directly.
     let escaped_password = password.replace("'", "''");
     let sql = format!("ALTER ROLE electric_sync WITH PASSWORD '{escaped_password}'");
 
-    sqlx::query(&sql).execute(pool).await?;
-
-    Ok(())
+    match sqlx::query(&sql).execute(pool).await {
+        Ok(_) => Ok(()),
+        Err(sqlx::Error::Database(e))
+            if matches!(
+                e.code().as_deref(),
+                // 42501 insufficient_privilege — connecting role can't ALTER
+                //   the replication role (e.g., PlanetScale, where the
+                //   replication role is created and rotated externally).
+                // 42704 undefined_object — the `electric_sync` role doesn't
+                //   exist in this environment (e.g., a managed Postgres
+                //   provider with a differently-named replication role).
+                Some("42501") | Some("42704")
+            ) =>
+        {
+            tracing::warn!(
+                pg_code = %e.code().unwrap_or_default(),
+                "skipping electric_sync password sync: {}",
+                e.message()
+            );
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
 }

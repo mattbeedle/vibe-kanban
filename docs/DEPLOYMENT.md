@@ -89,13 +89,11 @@ From PlanetScale dashboard:
 
 Save this for later - you'll need it for Fly secrets.
 
-### 1.4 Create Database
+### 1.4 Database Name
 
-Connect to your cluster and create the database:
-
-```sql
-CREATE DATABASE vibe_kanban;
-```
+PlanetScale Postgres clusters expose a single application database named
+`postgres`. There is no `CREATE DATABASE` step — both the main app and
+Electric connect to `postgres` directly.
 
 ## Step 2: GitHub OAuth Setup
 
@@ -121,10 +119,10 @@ Generate required secrets before deployment:
 # JWT secret (used for session tokens)
 openssl rand -base64 48
 
-# Electric sync role password
+# Electric API shared secret (set on BOTH main app and Electric app — same value)
 openssl rand -base64 32
 
-# Note: If using Electric's AUTH_SECRET, generate another one:
+# Replication user password (set on the cdc_user you create in step 6)
 openssl rand -base64 32
 ```
 
@@ -141,10 +139,16 @@ cd /path/to/vibe-kanban
 fly apps create vibe-kanban-electric
 
 # Set secrets
+# Note: PlanetScale's connection-string copy button defaults to
+# `sslmode=verify-full`. Electric only supports `sslmode=require` (or
+# `verify-full` with a CA bundle wired up via ELECTRIC_DATABASE_CA_CERTIFICATE_FILE),
+# so strip everything after `?` and replace with `?sslmode=require`.
+# The user portion includes the branch ID suffix per PlanetScale's docs:
+#   cdc_user.<branch-id>
 fly secrets set \
   -a vibe-kanban-electric \
-  DATABASE_URL="postgresql://electric_sync:PASSWORD@host:port/vibe_kanban?sslmode=require" \
-  AUTH_SECRET="<electric-auth-secret>"
+  DATABASE_URL="postgresql://cdc_user.<branch-id>:<replication-password>@<host>:5432/postgres?sslmode=require" \
+  ELECTRIC_SECRET="<electric-shared-secret-from-step-3>"
 
 # Deploy Electric
 fly deploy \
@@ -159,7 +163,7 @@ fly volumes create electric_data \
   -a vibe-kanban-electric
 ```
 
-> **Important**: The `DATABASE_URL` for Electric should use the `electric_sync` role (created in step 6).
+> **Important**: The `DATABASE_URL` for Electric must point to the `cdc_user` role created in step 6 (which has the `REPLICATION` attribute).
 
 ## Step 5: Deploy Main Application
 
@@ -172,9 +176,9 @@ fly apps create vibe-kanban
 # Set required secrets
 fly secrets set \
   -a vibe-kanban \
-  SERVER_DATABASE_URL="postgresql://username:password@host:port/vibe_kanban?sslmode=require" \
+  SERVER_DATABASE_URL="postgresql://<app-user>.<branch-id>:<password>@<host>:5432/postgres?sslmode=require" \
   VIBEKANBAN_REMOTE_JWT_SECRET="<jwt-secret-from-step-3>" \
-  ELECTRIC_ROLE_PASSWORD="<electric-password-from-step-3>" \
+  ELECTRIC_SECRET="<electric-shared-secret-from-step-3>" \
   SERVER_PUBLIC_BASE_URL="https://vibe-kanban.fly.dev" \
   GITHUB_OAUTH_CLIENT_ID="<github-client-id>" \
   GITHUB_OAUTH_CLIENT_SECRET="<github-client-secret>"
@@ -203,32 +207,67 @@ The app will:
 1. Build the Rust backend
 2. Build the React frontend
 3. Run database migrations automatically on startup
-4. Create the `electric_sync` role with appropriate permissions
 
-## Step 6: Configure Electric Database Role
+The migration that bootstraps the `electric_sync` role is best-effort — on
+managed Postgres providers like PlanetScale (where the connecting role
+can't `CREATE ROLE`) the migration silently skips role creation, and you
+provision a replication-capable user by hand in step 6.
 
-After the main app has run migrations, create and configure the `electric_sync` role:
+## Step 6: Configure Replication User on PlanetScale
 
-Connect to your PlanetScale database and run:
+PlanetScale doesn't allow the application user to grant the `REPLICATION`
+role attribute, so the replication user is provisioned out of band using
+the cluster's default `postgres` role.
 
-```sql
--- Create the electric_sync role (if not already created by migrations)
-CREATE ROLE electric_sync WITH LOGIN PASSWORD '<electric-password-from-step-3>' REPLICATION;
+### 6.1 Tune cluster parameters
 
--- Grant permissions
-GRANT CONNECT ON DATABASE vibe_kanban TO electric_sync;
-GRANT USAGE ON SCHEMA public TO electric_sync;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO electric_sync;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO electric_sync;
+In **Cluster > Parameters**, set:
 
--- For tables that Electric needs to publish
--- (Check crates/remote/src/shapes.rs for the full list)
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO electric_sync;
-```
+- `wal_level` = `logical`
+- `max_replication_slots` = at least `4` (`2 × replicas`)
+- `max_wal_senders` = at least `4`
+- `max_connections` = `100` or higher (the smallest tier ships with `25`,
+  which Electric's pool exhausts on its own)
 
-After setting up the role, restart the Electric app:
+Save and apply (the cluster restarts automatically).
+
+### 6.2 Reset the default `postgres` role to obtain admin credentials
 
 ```bash
+pscale auth login   # one-time, opens a browser
+pscale role reset-default <database> main --org <org> --force --format json
+```
+
+The output contains a fresh password for the `postgres` role and the
+`access_host_url` to connect to.
+
+### 6.3 Create the replication user
+
+Connected as `postgres` via `psql`:
+
+```sql
+CREATE USER cdc_user WITH REPLICATION LOGIN PASSWORD '<replication-password-from-step-3>';
+GRANT CONNECT ON DATABASE postgres TO cdc_user;
+GRANT USAGE ON SCHEMA public TO cdc_user;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO cdc_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO cdc_user;
+```
+
+### 6.4 Construct the Electric `DATABASE_URL`
+
+PlanetScale requires the branch ID as a suffix on the user portion (find
+the branch ID under **Settings > Roles** or by inspecting the connection
+string from any other role). The connection string must use
+`sslmode=require` for Electric:
+
+```
+postgresql://cdc_user.<branch-id>:<replication-password>@<access-host>:5432/postgres?sslmode=require
+```
+
+Set it on the Electric app and restart:
+
+```bash
+fly secrets set -a vibe-kanban-electric DATABASE_URL="<the-connection-string-above>"
 fly apps restart vibe-kanban-electric
 ```
 
@@ -245,7 +284,7 @@ fly apps create vibe-kanban-relay
 # Set secrets (must match main app's JWT secret)
 fly secrets set \
   -a vibe-kanban-relay \
-  SERVER_DATABASE_URL="postgresql://username:password@host:port/vibe_kanban?sslmode=require" \
+  SERVER_DATABASE_URL="postgresql://<app-user>.<branch-id>:<password>@<host>:5432/postgres?sslmode=require" \
   VIBEKANBAN_REMOTE_JWT_SECRET="<same-jwt-secret-as-main-app>"
 
 # Deploy relay
@@ -470,12 +509,16 @@ fly logs -a vibe-kanban | grep -i "database\|connection"
    fly logs -a vibe-kanban-electric
    ```
 
-3. Verify Electric role permissions:
+3. Verify the replication role exists and has the `REPLICATION` attribute:
    ```sql
-   -- Connect to database
+   SELECT rolname, rolreplication, rolcanlogin
+   FROM pg_roles
+   WHERE rolname = 'cdc_user';
+
+   -- And that it can read everything Electric publishes:
    SELECT grantee, privilege_type
    FROM information_schema.role_table_grants
-   WHERE grantee = 'electric_sync';
+   WHERE grantee = 'cdc_user';
    ```
 
 4. Check internal networking:
@@ -547,9 +590,9 @@ If health checks fail but app is running:
 
 ## Security Checklist
 
-- [ ] Use strong, randomly generated secrets (JWT, Electric password)
+- [ ] Use strong, randomly generated secrets (JWT, Electric password, `ELECTRIC_SECRET`)
 - [ ] Enable HTTPS (forced by default in fly.toml)
-- [ ] Set `AUTH_MODE = "secure"` for Electric in production
+- [ ] Ensure `ELECTRIC_INSECURE` is unset (or `false`) so Electric runs in secure mode
 - [ ] Use PlanetScale SSL connections (`?sslmode=require`)
 - [ ] Rotate secrets periodically
 - [ ] Review IAM permissions for database roles

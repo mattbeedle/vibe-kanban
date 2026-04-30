@@ -16,9 +16,6 @@ primary_region = 'sjc'  # Must match primary app region
   # Publisher host (for logical replication)
   LOGICAL_PUBLISHER_HOST = "vibe-kanban-electric"
 
-  # Auth mode - secure for production
-  AUTH_MODE = "secure"
-
   # Manual table publishing (tables are electrified via migrations)
   ELECTRIC_MANUAL_TABLE_PUBLISHING = "true"
 
@@ -67,7 +64,8 @@ primary_region = 'sjc'  # Must match primary app region
 # Required:
 #   DATABASE_URL           - PlanetScale Postgres connection string with electric_sync role
 #                           Format: postgresql://electric_sync:password@host:port/database?sslmode=require
-#   AUTH_SECRET            - Secret for Electric's secure auth mode (should match ELECTRIC_SECRET on main app if needed)
+#   ELECTRIC_SECRET        - Secret for Electric's API auth. Must match ELECTRIC_SECRET on the main app
+#                           so it can sign sync tokens that Electric will accept.
 #
 # Note: DATABASE_URL should use the electric_sync role with REPLICATION privileges
 # Create in PlanetScale after running migrations:

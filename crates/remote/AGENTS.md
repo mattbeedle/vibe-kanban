@@ -172,7 +172,7 @@ When adding a new type to `api-types` that the remote frontend needs, add its `:
 ## Common Pitfalls
 
 - **Empty string vs unset**: Docker Compose `${VAR:-}` produces `""`, which `std::env::var()` returns as `Ok("")`. Always check `!v.is_empty()` for optional config.
-- **ElectricSQL startup order**: Remote server must start first to create the `electric_sync` role. ElectricSQL will fail to connect if it starts before the server runs migrations.
+- **ElectricSQL startup order**: For self-hosted Postgres the remote server must start first so its migrations create the `electric_sync` role; ElectricSQL will fail to connect until the role exists. For managed Postgres providers (e.g., PlanetScale) the replication role is provisioned out of band — see `docs/DEPLOYMENT.md` step 6.
 - **Billing feature gate**: All billing code must be behind `#[cfg(feature = "vk-billing")]`. The `billing` crate is stripped from Cargo.toml during self-hosted Docker builds.
 - **Frontend URL vars are build-time**: `VITE_*` variables are baked into the JS bundle. Changing them requires a rebuild.
 - **SPA fallback path**: The frontend is served from `/srv/static` (hardcoded). This path only exists inside the Docker container.

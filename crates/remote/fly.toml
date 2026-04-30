@@ -83,9 +83,10 @@ primary_region = 'sjc'  # Change to your preferred region
 # Secrets to configure via `fly secrets set`:
 #
 # Required:
-#   SERVER_DATABASE_URL              - PlanetScale Postgres connection string
+#   SERVER_DATABASE_URL              - Postgres connection string
 #   VIBEKANBAN_REMOTE_JWT_SECRET     - JWT signing secret (openssl rand -base64 48)
-#   ELECTRIC_ROLE_PASSWORD           - Password for electric_sync database role
+#   ELECTRIC_SECRET                  - Shared secret for Electric API auth
+#                                      (must match the value on vibe-kanban-electric)
 #   SERVER_PUBLIC_BASE_URL           - Public URL (e.g., https://vibe-kanban.fly.dev)
 #
 # OAuth (at least one required):
