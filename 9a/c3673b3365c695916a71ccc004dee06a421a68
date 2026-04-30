@@ -1,0 +1,29 @@
+docs/DEPLOYMENT.md
+  a944f1a2e5ab5abe 210,235,243-246,249-264,267,270,287,512,514-518,521,593,595
+packages/remote-web/src/app/layout/RemoteAppShell.tsx
+  a944f1a2e5ab5abe 61-63
+crates/remote/AGENTS.md
+  a944f1a2e5ab5abe 175
+packages/web-core/src/shared/components/ui-new/containers/SharedAppLayout.tsx
+  a944f1a2e5ab5abe 175-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "9ac3673b3365c695916a71ccc004dee06a421a68",
+  "prompts": {
+    "a944f1a2e5ab5abe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9620494-3fa2-4f41-9dec-2fb159fdc3be",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Matt Beedle",
+      "messages": [],
+      "total_additions": 110,
+      "total_deletions": 52,
+      "accepted_lines": 86,
+      "overriden_lines": 0
+    }
+  }
+}
