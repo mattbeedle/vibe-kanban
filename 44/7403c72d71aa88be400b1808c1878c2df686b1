@@ -1,0 +1,31 @@
+crates/executors/src/executors/claude.rs
+  a944f1a2e5ab5abe 65,114,273
+crates/remote/AGENTS.md
+  a944f1a2e5ab5abe 175
+docs/DEPLOYMENT.md
+  a944f1a2e5ab5abe 92,94-96,122,125,142-147,150-151,166,179,181,211-234,236-242,244-246,249-264,267,270,287,512,514-518,521,593,595
+packages/remote-web/src/app/layout/RemoteAppShell.tsx
+  a944f1a2e5ab5abe 61-63
+packages/web-core/src/shared/components/ui-new/containers/SharedAppLayout.tsx
+  a944f1a2e5ab5abe 175-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "447403c72d71aa88be400b1808c1878c2df686b1",
+  "prompts": {
+    "a944f1a2e5ab5abe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9620494-3fa2-4f41-9dec-2fb159fdc3be",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Matt Beedle",
+      "messages": [],
+      "total_additions": 110,
+      "total_deletions": 52,
+      "accepted_lines": 87,
+      "overriden_lines": 2
+    }
+  }
+}
